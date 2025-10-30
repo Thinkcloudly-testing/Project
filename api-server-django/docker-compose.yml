@@ -1,27 +1,39 @@
 version: '3.8'
+
 services:
-  appseed-app:
-    container_name: appseed_app
-    restart: always
-    build: .
-    networks:
-      - db_network
-      - web_network
-  nginx:
-    container_name: nginx
-    restart: always
-    image: "nginx:latest"
+  db:
+    image: mysql:8.0
+    container_name: mysql_db
+    environment:
+      # These variables are used by the MySQL container to set up the database
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD} # Set root password for convenience, or use a separate one
     ports:
-      - "5000:5000"
+      - "3306:3306" # Expose MySQL port to the host
     volumes:
-      - ./nginx:/etc/nginx/conf.d
-    networks:
-      - web_network
-    depends_on: 
-      - appseed-app
-networks:
-  db_network:
-    driver: bridge
-  web_network:
-    driver: bridge
- 
+      - mysql_data:/var/lib/mysql # Persist database data
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${DB_USER}", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: . # Build from the Dockerfile in the current directory
+    container_name: django_app
+    command: python manage.py runserver 0.0.0.0:8000 # Command to start Django
+    volumes:
+      - .:/app # Mount the current directory into the container for live code changes
+    ports:
+      - "8000:8000" # Expose Django app port to the host
+    env_file:
+      - .env # Load environment variables from a .env file
+    depends_on:
+      db:
+        condition: service_healthy # Ensure DB is healthy before starting the web app
+    restart: always # Always restart if the container stops
+
+volumes:
+  mysql_data: # Define the named volume for MySQL data persistence
